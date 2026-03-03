@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>MEXC Tracker</title>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        :root { --bg: #0b0f1a; --card: #161b2c; --text: #f1f5f9; --green: #22c55e; --red: #ef4444; --accent: #38bdf8; }
+        body { background: var(--bg); color: var(--text); font-family: sans-serif; margin: 0; padding: 10px; }
+        .nav { display: flex; gap: 10px; padding: 10px; background: var(--card); border-radius: 8px; margin-bottom: 10px; align-items: center; overflow-x: auto; }
+        input, select, button { background: #0b0f1a; border: 1px solid #334155; color: white; padding: 8px; border-radius: 4px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; }
+        .card { background: var(--card); padding: 15px; border-radius: 10px; border: 1px solid #2d3748; }
+        .sym { font-size: 20px; font-weight: bold; color: var(--accent); }
+        .price-info { display: flex; justify-content: space-between; align-items: center; }
+        .impulse-flash { border: 2px solid #facc15; box-shadow: 0 0 10px #facc15; }
+    </style>
+</head>
+<body>
+
+<div class="nav">
+    <select id="tf"><option value="1m">1m</option><option value="5m">5m</option><option value="15m">15m</option><option value="1h">1h</option><option value="1d">1d</option></select>
+    <input type="number" id="minVol" placeholder="Мін $ Vol" value="50000">
+    <input type="number" id="minCh" placeholder="Мін %" value="1">
+    <button onclick="localStorage.clear(); location.reload();">Скинути</button>
+    <div id="status" style="font-size: 12px; color: #64748b;">Оновлення...</div>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<script>
+    let pairs = [];
+    let audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+
+    async function tick() {
+        try {
+            const r = await fetch('https://api.mexc.com/api/v3/ticker/24hr');
+            const data = await r.json();
+            const minV = parseFloat(document.getElementById('minVol').value) || 0;
+            const minC = parseFloat(document.getElementById('minCh').value) || 0;
+
+            pairs = data.filter(p => p.symbol.endsWith('USDT') && parseFloat(p.quoteVolume) >= minV && Math.abs(parseFloat(p.priceChangePercent)) >= minC)
+                        .sort((a,b) => b.priceChangePercent - a.priceChangePercent)
+                        .slice(0, 4);
+
+            render();
+            document.getElementById('status').innerText = 'Live: ' + new Date().toLocaleTimeString();
+        } catch(e) { console.error(e); }
+    }
+
+    function render() {
+        const grid = document.getElementById('grid');
+        grid.innerHTML = '';
+        pairs.forEach((p, i) => {
+            const ch = parseFloat(p.priceChangePercent);
+            if (ch > 5) audio.play().catch(()=>{}); // Звук на сильний ріст
+
+            const div = document.createElement('div');
+            div.className = `card ${ch > 8 ? 'impulse-flash' : ''}`;
+            div.innerHTML = `
+                <div class="price-info">
+                    <span class="sym">${p.symbol}</span>
+                    <span style="color:${ch >= 0 ? 'var(--green)' : 'var(--red)'}">${ch.toFixed(2)}%</span>
+                </div>
+                <div style="font-size:12px; margin-bottom:10px;">Vol: $${parseFloat(p.quoteVolume).toLocaleString()}</div>
+                <div id="chart${i}" style="height:200px"></div>
+            `;
+            grid.appendChild(div);
+            drawChart(`chart${i}`, p.symbol);
+        });
+    }
+
+    async function drawChart(id, sym) {
+        const tf = document.getElementById('tf').value;
+        const r = await fetch(`https://api.mexc.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=50`);
+        const d = await r.json();
+        const chart = LightweightCharts.createChart(document.getElementById(id), {
+            layout: { background: { color: 'transparent' }, textColor: '#64748b' },
+            grid: { vertLines: { visible: false }, horzLines: { color: '#2d3748' } },
+            timeScale: { visible: false },
+        });
+        const s = chart.addCandlestickSeries({ upColor: '#22c55e', downColor: '#ef4444' });
+        s.setData(d.map(c => ({ time: c[0]/1000, open: parseFloat(c[1]), high: parseFloat(c[2]), low: parseFloat(c[3]), close: parseFloat(c[4]) })));
+    }
+
+    setInterval(tick, 10000);
+    tick();
+</script>
+</body>
+</html>
