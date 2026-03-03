@@ -2,89 +2,98 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>MEXC Tracker</title>
+    <title>Medvid Scalp Pro</title>
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        :root { --bg: #0b0f1a; --card: #161b2c; --text: #f1f5f9; --green: #22c55e; --red: #ef4444; --accent: #38bdf8; }
-        body { background: var(--bg); color: var(--text); font-family: sans-serif; margin: 0; padding: 10px; }
-        .nav { display: flex; gap: 10px; padding: 10px; background: var(--card); border-radius: 8px; margin-bottom: 10px; align-items: center; overflow-x: auto; }
-        input, select, button { background: #0b0f1a; border: 1px solid #334155; color: white; padding: 8px; border-radius: 4px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; }
-        .card { background: var(--card); padding: 15px; border-radius: 10px; border: 1px solid #2d3748; }
-        .sym { font-size: 20px; font-weight: bold; color: var(--accent); }
-        .price-info { display: flex; justify-content: space-between; align-items: center; }
-        .impulse-flash { border: 2px solid #facc15; box-shadow: 0 0 10px #facc15; }
+        :root { --bg: #0b0e11; --accent: #f0b90b; --up: #0ecb81; --down: #f6465d; }
+        body { background: var(--bg); color: white; font-family: sans-serif; margin: 0; overflow: hidden; }
+        .header { background: #1e2329; padding: 10px; display: flex; align-items: center; border-bottom: 1px solid #333; height: 45px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; height: calc(100vh - 45px); gap: 2px; background: #333; }
+        .chart-card { background: var(--bg); position: relative; }
+        .info { position: absolute; top: 10px; left: 10px; z-index: 10; background: rgba(0,0,0,0.7); padding: 5px 10px; border-radius: 4px; pointer-events: none; }
+        .symbol { font-size: 18px; font-weight: bold; color: var(--accent); }
+        /* Кнопка запуску для обходу захисту браузера */
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); 
+                    display: flex; justify-content: center; align-items: center; z-index: 100; cursor: pointer; }
     </style>
 </head>
 <body>
 
-<div class="nav">
-    <select id="tf"><option value="1m">1m</option><option value="5m">5m</option><option value="15m">15m</option><option value="1h">1h</option><option value="1d">1d</option></select>
-    <input type="number" id="minVol" placeholder="Мін $ Vol" value="50000">
-    <input type="number" id="minCh" placeholder="Мін %" value="1">
-    <button onclick="localStorage.clear(); location.reload();">Скинути</button>
-    <div id="status" style="font-size: 12px; color: #64748b;">Оновлення...</div>
+<div id="overlay">
+    <div style="text-align: center;">
+        <h1 style="color:var(--accent)">MEDVID SCREENER PRO</h1>
+        <p>Натисніть тут для запуску потоку даних ⚡</p>
+    </div>
 </div>
 
-<div class="grid" id="grid"></div>
+<div class="header">
+    <b style="color:var(--accent)">MEDVID STATION</b>
+    <span style="margin-left: 20px; font-size: 12px; color: #848e9c;">MEXC Live • 5m Timeframe</span>
+</div>
+
+<div class="grid">
+    <div class="chart-card" id="c0"></div>
+    <div class="chart-card" id="c1"></div>
+    <div class="chart-card" id="c2"></div>
+    <div class="chart-card" id="c3"></div>
+</div>
 
 <script>
-    let pairs = [];
-    let audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+    // Список монет (можеш змінити на будь-які інші)
+    const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'PEPEUSDT'];
 
-    async function tick() {
-        try {
-            const r = await fetch('https://api.mexc.com/api/v3/ticker/24hr');
-            const data = await r.json();
-            const minV = parseFloat(document.getElementById('minVol').value) || 0;
-            const minC = parseFloat(document.getElementById('minCh').value) || 0;
+    document.getElementById('overlay').onclick = function() {
+        this.style.display = 'none'; // Ховаємо заставку
+        symbols.forEach((s, i) => createChart(s, i));
+    };
 
-            pairs = data.filter(p => p.symbol.endsWith('USDT') && parseFloat(p.quoteVolume) >= minV && Math.abs(parseFloat(p.priceChangePercent)) >= minC)
-                        .sort((a,b) => b.priceChangePercent - a.priceChangePercent)
-                        .slice(0, 4);
-
-            render();
-            document.getElementById('status').innerText = 'Live: ' + new Date().toLocaleTimeString();
-        } catch(e) { console.error(e); }
-    }
-
-    function render() {
-        const grid = document.getElementById('grid');
-        grid.innerHTML = '';
-        pairs.forEach((p, i) => {
-            const ch = parseFloat(p.priceChangePercent);
-            if (ch > 5) audio.play().catch(()=>{}); // Звук на сильний ріст
-
-            const div = document.createElement('div');
-            div.className = `card ${ch > 8 ? 'impulse-flash' : ''}`;
-            div.innerHTML = `
-                <div class="price-info">
-                    <span class="sym">${p.symbol}</span>
-                    <span style="color:${ch >= 0 ? 'var(--green)' : 'var(--red)'}">${ch.toFixed(2)}%</span>
-                </div>
-                <div style="font-size:12px; margin-bottom:10px;">Vol: $${parseFloat(p.quoteVolume).toLocaleString()}</div>
-                <div id="chart${i}" style="height:200px"></div>
-            `;
-            grid.appendChild(div);
-            drawChart(`chart${i}`, p.symbol);
-        });
-    }
-
-    async function drawChart(id, sym) {
-        const tf = document.getElementById('tf').value;
-        const r = await fetch(`https://api.mexc.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=50`);
-        const d = await r.json();
-        const chart = LightweightCharts.createChart(document.getElementById(id), {
-            layout: { background: { color: 'transparent' }, textColor: '#64748b' },
-            grid: { vertLines: { visible: false }, horzLines: { color: '#2d3748' } },
+    function createChart(symbol, index) {
+        const container = document.getElementById('c' + index);
+        container.innerHTML = `<div class="info"><div class="symbol">${symbol}</div><div id="p-${symbol}">Завантаження...</div></div>`;
+        
+        // Створення графіку
+        const chart = LightweightCharts.createChart(container, {
+            layout: { background: { color: '#0b0e11' }, textColor: '#d1d4dc' },
+            grid: { vertLines: { color: '#1f222d' }, horzLines: { color: '#1f222d' } },
             timeScale: { visible: false },
+            crosshair: { mode: 0 }
         });
-        const s = chart.addCandlestickSeries({ upColor: '#22c55e', downColor: '#ef4444' });
-        s.setData(d.map(c => ({ time: c[0]/1000, open: parseFloat(c[1]), high: parseFloat(c[2]), low: parseFloat(c[3]), close: parseFloat(c[4]) })));
-    }
 
-    setInterval(tick, 10000);
-    tick();
+        const series = chart.addCandlestickSeries({
+            upColor: '#0ecb81', downColor: '#f6465d', borderVisible: false, wickUpColor: '#0ecb81', wickDownColor: '#f6465d'
+        });
+
+        // Підключення до WebSocket MEXC (не блокується CORS на Vercel)
+        const ws = new WebSocket('wss://wbs.mexc.com/ws');
+        
+        ws.onopen = () => {
+            ws.send(JSON.stringify({
+                "method": "SUBSCRIPTION",
+                "params": [`spot@public.kline.v3.api@${symbol}@Min5`]
+            }));
+        };
+
+        ws.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            if (data.d && data.d.k) {
+                const k = data.d.k;
+                series.update({
+                    time: k.t / 1000,
+                    open: parseFloat(k.o),
+                    high: parseFloat(k.h),
+                    low: parseFloat(k.l),
+                    close: parseFloat(k.c)
+                });
+                document.getElementById(`p-${symbol}`).innerText = `$${parseFloat(k.c).toFixed(5)}`;
+                document.getElementById(`p-${symbol}`).style.color = parseFloat(k.c) >= parseFloat(k.o) ? '#0ecb81' : '#f6465d';
+            }
+        };
+
+        // Авто-розмір при зміні вікна
+        window.addEventListener('resize', () => {
+            chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+        });
+    }
 </script>
 </body>
 </html>
